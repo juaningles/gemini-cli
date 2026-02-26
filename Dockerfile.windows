@@ -1,0 +1,34 @@
+# syntax=docker/dockerfile:1
+# Windows Dockerfile for gemini-cli (supports windows/amd64)
+
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+SHELL ["powershell", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue';"]
+
+# Install Node.js LTS with checksum verification via official SHASUMS file
+RUN $nodeVersion = 'v22.14.0'; \
+    $nodeArch = 'x64'; \
+    $base = "https://nodejs.org/dist/$nodeVersion"; \
+    Invoke-WebRequest -Uri "$base/node-$nodeVersion-win-$nodeArch.zip" -OutFile C:\nodejs.zip; \
+    Invoke-WebRequest -Uri "$base/SHASUMS256.txt" -OutFile C:\SHASUMS256.txt; \
+    $expected = (Select-String -Path C:\SHASUMS256.txt -Pattern "node-$nodeVersion-win-$nodeArch.zip").Line.Split(' ')[0].ToUpper(); \
+    $actual = (Get-FileHash -Path C:\nodejs.zip -Algorithm SHA256).Hash; \
+    if ($actual -ne $expected) { \
+        Remove-Item C:\nodejs.zip, C:\SHASUMS256.txt; \
+        throw "SHA256 mismatch: expected $expected but got $actual"; \
+    }; \
+    Expand-Archive -Path C:\nodejs.zip -DestinationPath C:\; \
+    Rename-Item "C:\node-$nodeVersion-win-$nodeArch" C:\nodejs; \
+    Remove-Item C:\nodejs.zip, C:\SHASUMS256.txt
+
+ENV PATH="C:\nodejs;${PATH}"
+
+# Install gemini-cli globally
+RUN npm install -g gemini-cli && npm cache clean --force
+
+# Environment variable for the Gemini API key
+ENV GEMINI_API_KEY=""
+
+WORKDIR C:\gemini
+ENTRYPOINT ["gemini"]
+CMD ["--help"]
